@@ -5,7 +5,7 @@
   zip-with zip
   matches? lambda-rec eta
   define-interface
-  foldl1 reduce dict-union hash-unions)
+  foldl1 reduce dict-union)
 
 (define (const x) (lambda _ x))
 (define (repr x) (with-output-to-string (lambda () (write x))))
@@ -77,7 +77,7 @@
     [`(,a ,b) (function a b)]
     [(cons a as) (foldl (flip function) a as)]))
 
-(define (dict-union a b [combine (lambda (x y) y)])
+(define (dict-union a b [combine (lambda (k x y) y)])
   (cond
     [(dict-empty? a) b]
     [(dict-empty? b) a]
@@ -87,13 +87,8 @@
         (lambda (key val)
           (set! a (dict-set a key
                     (if (dict-has-key? a key)
-                     (combine (dict-ref a key) val)
+                     (combine key (dict-ref a key) val)
                       val)))))
       a]))
-
-(define (hash-unions hashes [combine (lambda (x y) y)])
-  (if (null? hashes) (hash)
-    ;; relies on reduce not using its second argument if list is non-empty
-    (reduce hashes (void) (lambda (x y) (dict-union x y combine)))))
 
 (displayln "util.rkt loaded")

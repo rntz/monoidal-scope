@@ -17,6 +17,7 @@
     [`(begin . ,body) (eval-body body env)]
     [`(import . ,_) (error "invalid use of import in expression")]
     [`(module . ,_) (error "invalid use of module in expression")]
+    [`(monoidify . ,_) (error "invalid use of monoidify in expression")]
     [`(define . ,_) (error "invalid use of define in expression")]
     [`(quote ,x) x]
     [`(,f . ,as)
@@ -37,6 +38,13 @@
       (let-values ([(val mod-env) (eval-module-body body env)])
         (let ([mod (make-nodule name mod-env)])
           (values mod (env-single name mod))))]
+    [`(monoidify ,name ,join-exp ,empty-exp)
+      (let* ([join  (eval join-exp env)]
+             [empty (eval empty-exp env)]
+             [mon   (make-monoid name join empty)])
+        (values mon (env-join
+                      (env-single-monoid name mon)
+                      (env-single name empty))))]
     [`(define ,(? symbol? name) . ,body)
       (let ((val (eval-body body env)))
         (values val (env-single name val)))]
@@ -71,25 +79,44 @@
 ;; Modules, called nodule to avoid conflicting with racket module.
 (struct nodule (name env) #:prefab #:constructor-name make-nodule)
 
+;; Monoids, with uids attached so we can identify when two monoids are the same.
+(struct monoid (name uid join empty) #:prefab
+  #:constructor-name make-monoid-internal)
+
+(define (make-monoid name join empty)
+  (make-monoid-internal name (gensym name) join empty))
+
+(define (monoid=? a b) (eq? (monoid-uid a) (monoid-uid b)))
+
 
 ;; An environment maps identifiers to values. It separately maps identifiers to
 ;; monoids. If an ident is mapped to a monoid, that monoid is used to combine
 ;; values bound to that identifier.
+(struct env (vals monoids) #:prefab #:constructor-name make-env)
 
-;; TODO: monoid stuff
-(struct env (map) #:prefab #:constructor-name make-env)
-
-(define env-empty (make-env (hash)))
+(define env-empty (make-env (hash) (hash)))
 (define (env-join a b)
-  ;; TODO: monoid-based merging
-  (make-env (dict-union (env-map a) (env-map b))))
+  (define (monoid-merge name a b)
+    (if (monoid=? a b) a
+      (error "oops! I don't know how to merge monoids, sorry :(")))
+  (let* ([monoids (dict-union (env-monoids a) (env-monoids b)
+                    monoid-merge)]
+          ;; TODO: check whether any monoids in b have mapped values in a. if
+          ;; so, error out: adding a monoid to an identifier post-hoc is not
+          ;; supported.
+         [vals (dict-union (env-vals a) (env-vals b)
+                 (lambda (k x y) (if (dict-has-key? monoids k)
+                              ((monoid-join (dict-ref monoids k)) x y)
+                              y)))])
+    (make-env vals monoids)))
 
-(define (env-single name val) (make-env (hash name val)))
+(define (env-single name val) (make-env (hash name val) (hash)))
+(define (env-single-monoid name val) (make-env (hash) (hash name val)))
 (define (env-from-list bindings)
   (reduce (map (lambda (x) (apply env-single x)) bindings)
     env-empty env-join))
 
-(define (env-get env name) (dict-ref (env-map env) name))
+(define (env-get env name) (dict-ref (env-vals env) name))
 (define (env-put env name val) (env-join env (env-single name val)))
 
 (define (env-bind env names vals)
