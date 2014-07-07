@@ -4,8 +4,6 @@
 
 (require "util.rkt")
 
-(define (fix f) (lambda args (apply f f args)))
-
 (define (literal? x)
   (or (string? x) (number? x)))
 
@@ -139,3 +137,8 @@
 
 (define base-env
   (env-from-list (map (lambda (name) `(,name ,(racket:eval name))) prelude)))
+
+
+;; Loading files
+(define (run-file filename)
+  (eval-body (read-file filename)))
