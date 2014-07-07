@@ -5,7 +5,7 @@
   const fix flip partial nary unary
   zip-with zip map_
   matches? lambda-rec eta
-  foldl1 reduce dict-union
+  foldl1 reduce hash-union
   println read-file)
 
 (define (repr x) (with-output-to-string (lambda () (write x))))
@@ -54,17 +54,17 @@
     [`(,a ,b) (function a b)]
     [(cons a as) (foldl (flip function) a as)]))
 
-(define (dict-union a b [combine (lambda (k x y) y)])
+(define (hash-union a b [combine (lambda (k x y) y)])
   (cond
-    [(dict-empty? a) b]
-    [(dict-empty? b) a]
+    [(hash-empty? a) b]
+    [(hash-empty? b) a]
     [else
       ;; TODO: this is inefficient
-      (dict-for-each b
+      (hash-for-each b
         (lambda (key val)
-          (set! a (dict-set a key
-                    (if (dict-has-key? a key)
-                     (combine key (dict-ref a key) val)
+          (set! a (hash-set a key
+                    (if (hash-has-key? a key)
+                     (combine key (hash-ref a key) val)
                       val)))))
       a]))
 

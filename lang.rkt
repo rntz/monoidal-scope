@@ -1,6 +1,7 @@
 #lang racket
 
 (require (prefix-in racket: racket))
+(require racket/set)
 
 (require "util.rkt")
 
@@ -85,7 +86,7 @@
   [(define (write-proc self port mode)
      (fprintf port "<module ~a defines ~a>"
        (nodule-name self)
-       (sort (dict-keys (env-vals (nodule-env self))) symbol<?)))])
+       (sort (hash-keys (env-vals (nodule-env self))) symbol<?)))])
 
 ;; Monoids, with uids attached so we can identify when two monoids are the same.
 (struct monoid (name uid join empty) #:prefab
@@ -107,14 +108,14 @@
   (define (monoid-merge name a b)
     (if (monoid=? a b) a
       (error "oops! I don't know how to merge monoids, sorry :(")))
-  (let* ([monoids (dict-union (env-monoids a) (env-monoids b)
+  (let* ([monoids (hash-union (env-monoids a) (env-monoids b)
                     monoid-merge)]
           ;; TODO: check whether any monoids in b have mapped values in a. if
           ;; so, error out: adding a monoid to an identifier post-hoc is not
           ;; supported.
-         [vals (dict-union (env-vals a) (env-vals b)
-                 (lambda (k x y) (if (dict-has-key? monoids k)
-                              ((monoid-join (dict-ref monoids k)) x y)
+         [vals (hash-union (env-vals a) (env-vals b)
+                 (lambda (k x y) (if (hash-has-key? monoids k)
+                              ((monoid-join (hash-ref monoids k)) x y)
                               y)))])
     (make-env vals monoids)))
 
@@ -125,7 +126,7 @@
     env-empty env-join))
 
 (define (env-get env name)
-  (dict-ref (env-vals env) name (lambda () (raise `(unbound ,name)))))
+  (hash-ref (env-vals env) name (lambda () (raise `(unbound ,name)))))
 
 (define (env-put env name val) (env-join env (env-single name val)))
 
@@ -145,8 +146,13 @@
      print display displayln
      map foldl foldr append
      string-append
+     set set->list set-add set-member? set-remove set-union
+     hash hash-has-key? hash-ref hash-remove hash-union
      ))
 
+;; hacks to get eval to work as desired here
+(namespace-require 'racket/set)
+(namespace-require "util.rkt")
 (define base-env
   (env-from-list (map (lambda (name) `(,name ,(racket:eval name))) prelude)))
 
@@ -185,7 +191,7 @@
   (let ([vals (env-vals env)]
         [monoids (env-monoids env)])
     (let-values ([(procs vals) (partition (compose procedure? cdr)
-                                 (dict->list vals))])
+                                 (hash->list vals))])
       (unless (null? procs)
         (printf "  Procedures: ~a\n"
           (string-join (sort (map (compose symbol->string car) procs) string<?)
@@ -195,6 +201,6 @@
           (for/list ([v (sort vals symbol<? #:key car)])
             (format "~a: ~v" (car v) (cdr v)))
           ", "))
-      (unless (dict-empty? monoids)
+      (unless (hash-empty? monoids)
         (printf "  Monoids: ~a\n"
-          (string-join (map symbol->string (dict-keys monoids)) " "))))))
+          (string-join (map symbol->string (hash-keys monoids)) " "))))))
