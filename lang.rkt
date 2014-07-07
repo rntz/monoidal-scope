@@ -9,15 +9,20 @@
 
 (define (eval exp [env base-env])
   (match exp
+    [`(import . ,_) (error "invalid use of 'import in expression")]
+    [`(module . ,_) (error "invalid use of 'module in expression")]
+    [`(monoidify . ,_) (error "invalid use of 'monoidify in expression")]
+    [`(use . ,_) (error "invalid use of 'use in expression")]
+    [`(define . ,_) (error "invalid use of 'define in expression")]
+    [`(quote ,x) x]
     [`(lambda ,params . ,body)
       (lambda args (eval-body body (env-bind env params args)))]
-    ;; TODO: let
+    [`(let ,bindings . ,body)
+      (eval-body body
+        (env-bind env
+          (map car bindings)
+          (map (lambda (x) (eval (cadr x) env)) bindings)))]
     [`(begin . ,body) (eval-body body env)]
-    [`(import . ,_) (error "invalid use of import in expression")]
-    [`(module . ,_) (error "invalid use of module in expression")]
-    [`(monoidify . ,_) (error "invalid use of monoidify in expression")]
-    [`(define . ,_) (error "invalid use of define in expression")]
-    [`(quote ,x) x]
     [`(,f . ,as)
       (apply (eval f env) (map (lambda (x) (eval x env)) as))]
     [(? symbol? x) (env-get env x)]
@@ -29,18 +34,20 @@
   (match exp
     [`(import ,name)
       (let ((mod (env-get env name)))
-        (values mod (nodule-env mod)))]
+        (values (void) (nodule-env mod)))]
     [`(module ,name . ,body)
       (let-values ([(val mod-env) (eval-module-body body env)])
         (let ([mod (make-nodule name mod-env)])
-          (values mod (env-single name mod))))]
+          (values (void) (env-single name mod))))]
     [`(monoidify ,name ,join-exp ,empty-exp)
       (let* ([join  (eval join-exp env)]
              [empty (eval empty-exp env)]
              [mon   (make-monoid name join empty)])
-        (values mon (env-join
-                      (env-single-monoid name mon)
-                      (env-single name empty))))]
+        (values (void) (env-join
+                         (env-single-monoid name mon)
+                         (env-single name empty))))]
+    [`(use ,expr)
+      (eval-module-body (read-file (eval expr env)) env)]
     [`(define ,(? symbol? name) . ,body)
       (let ((val (eval-body body env)))
         (values val (env-single name val)))]
@@ -73,7 +80,12 @@
 
 
 ;; Modules, called nodule to avoid conflicting with racket module.
-(struct nodule (name env) #:prefab #:constructor-name make-nodule)
+(struct nodule (name env) #:transparent #:constructor-name make-nodule
+  #:methods gen:custom-write
+  [(define (write-proc self port mode)
+     (fprintf port "<module ~a defines ~a>"
+       (nodule-name self)
+       (sort (dict-keys (env-vals (nodule-env self))) symbol<?)))])
 
 ;; Monoids, with uids attached so we can identify when two monoids are the same.
 (struct monoid (name uid join empty) #:prefab
@@ -149,12 +161,13 @@
   (define (handle-unbound exn)
     (printf "Reference to undefined variable: ~a\n" (cadr exn)))
   (let loop ([env base-env] [debug #f])
-    (display "repl> ")
+    (display "REPL: ")
     (match (read)
-      [':quit (error "Quitting.")]
+      [(or ':q ':quit) (error "Quitting.")]
       [':env
         (displayln "Current env is:")
         (print-env env)]
+      [':reset (set! env base-env)]
       [':debug
         (set! debug (not debug))
         (printf "Debugging output is ~a\n" (if debug "on" "off"))]
@@ -164,7 +177,7 @@
             (when debug
               (displayln "Env changes:")
               (print-env decl-env))
-            (println val)
+            (unless (void? val) (println val))
             (set! env (env-join env decl-env))))])
     (loop env debug)))
 
@@ -180,7 +193,7 @@
       (printf "  Values: {~a}\n"
         (string-join
           (for/list ([v (sort vals symbol<? #:key car)])
-            (format "~a: ~a" (car v) (cdr v)))
+            (format "~a: ~v" (car v) (cdr v)))
           ", "))
       (unless (dict-empty? monoids)
         (printf "  Monoids: ~a\n"

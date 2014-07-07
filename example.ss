@@ -5,6 +5,3 @@
 (module b
   (define in-b "b")
   (define in-both "b"))
-
-(import a)
-(import b)
