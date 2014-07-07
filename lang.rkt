@@ -26,8 +26,6 @@
 ;; Returns (values V E), where V is the value of the decl-or-expr, and E is the
 ;; extension the declaration makes to the current environment.
 (define (eval-decl exp env)
-  ;; TODO: module declarations
-  ;; TODO: monoid declarations
   (match exp
     [`(import ,name)
       (let ((mod (env-get env name)))
@@ -114,7 +112,9 @@
   (reduce (map (lambda (x) (apply env-single x)) bindings)
     env-empty env-join))
 
-(define (env-get env name) (dict-ref (env-vals env) name))
+(define (env-get env name)
+  (dict-ref (env-vals env) name (lambda () (raise `(unbound ,name)))))
+
 (define (env-put env name val) (env-join env (env-single name val)))
 
 (define (env-bind env names vals)
@@ -131,7 +131,7 @@
      apply
      list cons car cdr null?
      print display displayln
-     map foldl foldr
+     map foldl foldr append
      string-append
      ))
 
@@ -142,3 +142,46 @@
 ;; Loading files
 (define (run-file filename)
   (eval-body (read-file filename)))
+
+;; REPL
+(define (repl)
+  (define (unbound? exn) (and (list? exn) (eq? 'unbound (car exn))))
+  (define (handle-unbound exn)
+    (printf "Reference to undefined variable: ~a\n" (cadr exn)))
+  (let loop ([env base-env] [debug #f])
+    (display "repl> ")
+    (match (read)
+      [':quit (error "Quitting.")]
+      [':env
+        (displayln "Current env is:")
+        (print-env env)]
+      [':debug
+        (set! debug (not debug))
+        (printf "Debugging output is ~a\n" (if debug "on" "off"))]
+      [decl
+        (with-handlers ([unbound? handle-unbound])
+          (let-values ([(val decl-env) (eval-decl decl env)])
+            (when debug
+              (displayln "Env changes:")
+              (print-env decl-env))
+            (println val)
+            (set! env (env-join env decl-env))))])
+    (loop env debug)))
+
+(define (print-env env)
+  (let ([vals (env-vals env)]
+        [monoids (env-monoids env)])
+    (let-values ([(procs vals) (partition (compose procedure? cdr)
+                                 (dict->list vals))])
+      (unless (null? procs)
+        (printf "  Procedures: ~a\n"
+          (string-join (sort (map (compose symbol->string car) procs) string<?)
+            " ")))
+      (printf "  Values: {~a}\n"
+        (string-join
+          (for/list ([v (sort vals symbol<? #:key car)])
+            (format "~a: ~a" (car v) (cdr v)))
+          ", "))
+      (unless (dict-empty? monoids)
+        (printf "  Monoids: ~a\n"
+          (string-join (map symbol->string (dict-keys monoids)) " "))))))

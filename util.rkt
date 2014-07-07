@@ -6,7 +6,7 @@
   zip-with zip map_
   matches? lambda-rec eta
   foldl1 reduce dict-union
-  read-file)
+  println read-file)
 
 (define (repr x) (with-output-to-string (lambda () (write x))))
 
@@ -69,6 +69,9 @@
       a]))
 
 
+;; I/O procedures
+(define (println x) (print x) (display "\n"))
+
 ;; Reads all s-expressions from filename
 (define (read-file path)
   (with-input-from-file path
@@ -77,5 +80,3 @@
         (let ([x (read)])
           (if (eof-object? x) (reverse sexps)
             (loop (cons x sexps))))))))
-
-(displayln "util.rkt loaded")
