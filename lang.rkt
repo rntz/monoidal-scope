@@ -51,11 +51,11 @@
       (eval-module-body (read-file (eval expr env)) env)]
     [`(define ,(? symbol? name) . ,body)
       (let ((val (eval-body body env)))
-        (values val (env-single name val)))]
+        (values (void) (env-single name val)))]
     [`(define (,name . ,params) . ,body)
       (define (self . args)
         (eval-body body (env-bind (env-put env name self) params args)))
-      (values self (env-single name self))]
+      (values (void) (env-single name self))]
     [exp (values (eval exp env) env-empty)]))
 
 ;; Returns (values V E), where V is the value of the last decl-or-expr in the
